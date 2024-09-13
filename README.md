@@ -3,6 +3,10 @@
 This is the source code for the Commodore Amiga game "Phantom Fighter" released commercially in 1988. It was my first commercial game. I found a floppy from Aug 1988 with the source code but no graphics files. I coded this when I was 19 years old and it's sorely lacking in comments. It's a combination of lattice C and 68000 assembler. 
 The code was executed natively by booting from a floppy, no bootstrap. It uses a boot library and floppy driver written by Brian Kelly who worked at Emerald Software at the same time as me. This boot library was called KOS (Kel's operating system).
 
+## Youtube demo
+
+There are several youtube videos of the game in action. Here is one of them: https://www.youtube.com/watch?v=jH1GkEExdRs&t=1s
+
 ## Whats missing
 
 I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing header files and libraries and the graphics. The graphics could possibly be recovered from a game disk which I also have but haven't done yet. I will try to recover the graphics and add them to this repository.
