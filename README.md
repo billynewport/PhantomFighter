@@ -38,7 +38,7 @@ Interestingly, when we were publishing the game in the USA, the KOS formatted di
 
 ## Bob Editor
 
-Mike Murphy had created his own Sprite/Bitmap editor for the Amiga. It was called the Bob Editor. Bob was for Bitmap object I think. The artists used that to do all the bitmaps for the games. Mike had written this before he helped start Emerald Software. It was a very good editor and was used for all the games at Emerald Software. It was used to create the graphics for Phantom Fighter.
+Mike Murphy had created his own Sprite/Bitmap editor for the Amiga. This was an improved version of the functionality of Deluxe Paint optimized for gaming. It was called the Bob Editor. Bob was for Bitmap object I think. The artists used that to do all the bitmaps for the games. Mike had written this before he helped start Emerald Software. It was a very good editor and was used for all the games at Emerald Software. It was used to create the graphics for Phantom Fighter.
 
 ## Game philosophy looking back
 
@@ -51,3 +51,11 @@ The main.c file is the main entry point. From these, media files are loaded, the
 ## IFF file format
 
 The IFF standard is a chunk based file format. Each chunk has a 4 byte ID, a 4 byte length and then the data. The data is padded to an even number of bytes. The Bob Editor used this format to store the bitmaps and sprites. The IFF format was used in Deluxe Paint and other Amiga software.
+
+## Development hardware
+
+I started with a 1MB Amiga 1000 and settled on a 1MB Amiga 500 for development with an external 5MB harddrive and a CBM color monitor. The hard drive was a US model and required 110V which we didn't have in Ireland. Mike's buddy Martin rigged up a choke which dropped the voltage from 240V down to 110V and this worked for a while until one day the drive made some awful noises and failed.
+
+## Build optimizations
+
+Lattice C was the compiler/assembler used by the game. In order to speed the development process, a RAM disk was created on the Amiga and the headers were precompiled and stored in the RAM disk. Subsequent builds then used the precompiled headers. If the headers were modified then the precompiled headers needed to be regenerated. The C and assembler files were compiled to object files and then linked together. The resulting executable file was then post processed by a KOS utility and prepped for remote execution on the test Amiga.
