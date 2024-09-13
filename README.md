@@ -31,3 +31,7 @@ The game used the Copper chip to interact with the video hardware registers. Thi
 Initially, I tried developing the game as an Amiga Application. It used all the normal APIs but we found the game would skip frames and we didn't like that. Brian Kelly started developing his own bootstrap system called KOS (Kel's Operating System). He wrote his own MFM encode/decode for the bitstream floppies on the Amiga as well as the bootstrap code. He wrote libraries for Lattice C which could load a Lattice compiled executable from a floppy and bootstrap it. He also wrote file read/write routines which were used to construct the game floppy disk during development. KOS had a remote debugging capability inspired by PDS which was used for 8 bit game development. We had a parallel cable between a test Amiga and the developers Amiga. We could run the game remotely and it would load graphics from the source Amiga. He also implemented a simple source code level debugger which meant debugging was much easier.
 
 Interestingly, when we were publishing the game in the USA, the KOS formatted disks would not boot on a US Commodore Amiga. This seemed to be a timing issue with 50 and 60Hz. If my memory serves me correctly, Brian had coded the MFM encoding slightly non standard and as a result we had this issue. Brian fixed the issue for the US version.
+
+## Bob Editor
+
+Mike Murphy had created his own Sprite/Bitmap editor for the Amiga. It was called the Bob Editor. The artists used that to do all the bitmaps for the games.
