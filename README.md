@@ -1,0 +1,2 @@
+This is the source code for the Commodore Amiga game "Phantom Fighter" released commercially in 1988. It was my first commercial game. I found a floppy from Aug 1988 with the source code but no graphics files. I coded this when I was 19 years old and it's sorely lacking in comments. It's a combination of lattice C and 68000 assembler. 
+The code was executed natively by booting from a floppy, no bootstrap. It uses a boot library and floppy driver written by Brian Kelly who worked at Emerald Software at the same time as me.
