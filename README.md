@@ -69,3 +69,11 @@ I started with a 1MB Amiga 1000 and settled on a 1MB Amiga 500 for development w
 ## Build optimizations
 
 Lattice C was the compiler/assembler used by the game. In order to speed the development process, a RAM disk was created on the Amiga and the headers were precompiled and stored in the RAM disk. Subsequent builds then used the precompiled headers. If the headers were modified then the precompiled headers needed to be regenerated. The C and assembler files were compiled to object files and then linked together. The resulting executable file was then post processed by a KOS utility and prepped for remote execution on the test Amiga.
+
+### Lattice C
+
+Lattice had some advantages. The compiler was a 2 pass compiler. The first pass took the C code and translated it to 68k assembler files. A second pass took the assembler and generated the corresponding object files. This was handy as it allowed me to write an algorithm in C and then look at the assembler version of that code. I then usually hand tuned it to make it faster.
+
+## 68010 issues
+
+The game was developed on a 68000 Amiga. The 68010 Amigas came later and introduced compatibility problems due to their instruction prefetch. The 68010 would prefetch 3 16 bit words ahead. This caused problems with self modifying code which updated a following instruction. The code would execute incorrectly because the unmodified instruction was fetched during the modification instruction being executed thus the modification was lost. The game was never updated to work on a 68010 Amiga.
