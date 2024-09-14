@@ -137,7 +137,7 @@ struct GraphObject { /* An object can be a picture or a bob */
    SHORT  Width,Height; /* Pixel width and height of the object */
    UBYTE  Depth;        /* Depth include mask plane if any */
    UBYTE  RDepth;
-   WORD HotX;
+   WORD HotX; /* The Hot X and Y offsets are to the logical center of the object */
    WORD HotY;
    };
 
