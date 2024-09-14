@@ -76,4 +76,4 @@ Lattice had some advantages. The compiler was a 2 pass compiler. The first pass 
 
 ## 68010 issues
 
-The game was developed on a 68000 Amiga. The 68010 Amigas came later and introduced compatibility problems due to their instruction prefetch. The 68010 would prefetch 3 16 bit words ahead. This caused problems with self modifying code which updated a following instruction. The code would execute incorrectly because the unmodified instruction was fetched during the modification instruction being executed thus the modification was lost. The game was never updated to work on a 68010 Amiga.
+The game was developed on a 68000 Amiga. The 68010 Amigas came later and introduced compatibility problems due to their instruction prefetch. The 68010 would prefetch 3 16 bit words ahead. This caused problems with self modifying code which updated a following instruction. The code would execute incorrectly because the unmodified instruction was fetched during the modification instruction being executed thus the modification was lost.
