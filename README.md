@@ -26,9 +26,13 @@ Paul was responsible for the graphics. He was intriguted with the Alien movies a
 
 ## Game Hardware overview
 
-The game was designed around the dual playfield graphics mode on the Amiga. This provided 2 independent 320x200 8 color view fields, one on top of the other. Each can be scrolled independently. I used hardware sprites for player bullets and ships were rendered on the screen using the blitter. The blitter was used in a clever way. Normally, each bitplane for each playfield (there are 3 per playfield, hence 8 colors) is allocated in memory and then the hardware is setup to point at the 3 bitplanes memory for each playfield. We rendered the ships and graphics on the top playfield. Usually, this means we would need a blitter operation per bitplane to render a software sprite.
+The game was designed around the dual playfield graphics mode on the Amiga. This provided 2 independent 320x256 8 color view fields, one on top of the other. Each can be scrolled independently. I used hardware sprites for player bullets and ships were rendered on the screen using the blitter. The blitter was used in a clever way. Normally, each bitplane for each playfield (there are 3 per playfield, hence 8 colors) is allocated in memory and then the hardware is setup to point at the 3 bitplanes memory for each playfield. We rendered the ships and graphics on the top playfield. Usually, this means we would need a blitter operation per bitplane to render a software sprite.
 
 The game used the Copper chip to interact with the video hardware registers. This included setting up the dual playfield as described above, the hardware sprites and switching the video mode towards the bottom of the screen allowing a score board to be displayed. The dual playfield was only at the top portion of the screen, the playable area. The score board showed how many lifes were left, the score and so on. This was a straight 16 color playfield.
+
+## Generating the Copper programs for the various screen modes.
+
+The copper was basically a simple microprocessor which could be programmed to change the video hardware registers at specific scan lines. This allowed us to change the video mode at the bottom of the screen to a single playfield mode and display the score board. The copper was also used to setup the hardware sprites and the dual playfield mode at the top of the screen. I generated copper programs by setting up what I wanted using a normal AmigaOS call and then dumping the Copper program to a file. I then "poked" the values in to the correct places in the copper program.
 
 ## Blitter optimization
 
