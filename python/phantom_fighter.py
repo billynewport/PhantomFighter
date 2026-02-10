@@ -375,11 +375,11 @@ def load_sound(name):
     if not sfx_path.exists():
         return None
     try:
-        raw = sfx_path.read_bytes()
-        import array
-        samples = array.array('b', raw)
-        unsigned = array.array('B', [s + 128 for s in samples])
-        return pygame.mixer.Sound(buffer=bytes(unsigned))
+        import numpy as np
+        raw = np.frombuffer(sfx_path.read_bytes(), dtype=np.int8).astype(np.int16)
+        # Upsample 4x (11025→44100) using zero-order hold (matches Amiga DAC)
+        raw = np.repeat(raw, 4) * 256   # scale 8-bit to 16-bit
+        return pygame.mixer.Sound(buffer=raw.tobytes())
     except Exception:
         return None
 
@@ -918,12 +918,264 @@ class Token:
                          (int(self.x), int(self.y)))
 
 
+# ── Music Player (SMUS format) ───────────────────────────────────
+
+class MusicPlayer:
+    """Parse Amiga SMUS music file and pre-render to a looping pygame Sound.
+
+    The original game stores music as an IFF SMUS (Simple Musical Score) file
+    containing 3 tracks of 2-byte events. Each event is either a control code
+    (instrument change, time signature, etc.) or a note/rest with duration flags.
+
+    Instrument samples are the same .sfx files used for sound effects.
+    Notes are pitched using Amiga period values from octave lookup tables —
+    lower period = higher frequency. We resample each note to the mixer rate.
+    """
+
+    NTSC_CLOCK = 3_579_545
+    NOTE_LENGTHS = [96, 48, 24, 12, 6, 3, 1, 0]
+
+    # Amiga period tables (from sound.c) — index 0-126, lower value = higher pitch
+    OCTAVE1 = [
+        7550, 7127, 6727, 6349, 5993, 5656, 5339, 5039,
+        4756, 4489, 4237, 4000, 3775, 3563, 3363, 3174,
+        2996, 2828, 2669, 2519, 2378, 2244, 2118, 2000,
+        1887, 1781, 1681, 1587, 1498, 1414, 1334, 1259,
+        1189, 1122, 1059, 1000, 943, 890, 840, 793,
+        749, 707, 667, 629, 594, 561, 529, 500,
+        471, 445, 420, 396, 374, 353, 333, 314,
+        297, 280, 264, 250, 235, 222, 210, 198,
+        187, 176, 166, 157, 148, 140, 132, 125,
+        117, 111, 105, 99, 93, 88, 83, 78,
+        74, 70, 66, 62, 58, 55, 52, 49,
+        46, 44, 41, 39, 37, 35, 33, 31,
+        29, 27, 26, 24, 23, 22, 20, 19,
+        18, 17, 16, 15, 14, 13, 13, 12,
+        11, 11, 10, 9, 9, 8, 8, 7,
+        7, 6, 6, 6, 5, 5, 5, 5,
+    ]
+
+    OCTAVE2 = [
+        2595, 2449, 2312, 2182, 2060, 1944, 1835, 1732,
+        1635, 1543, 1456, 1375, 1297, 1224, 1156, 1091,
+        1030, 972, 917, 866, 817, 771, 728, 687,
+        648, 612, 578, 545, 515, 486, 458, 433,
+        408, 385, 364, 343, 324, 306, 289, 272,
+        257, 243, 229, 216, 204, 192, 182, 171,
+        162, 153, 144, 136, 128, 121, 114, 108,
+        102, 96, 91, 85, 81, 76, 72, 68,
+        64, 60, 57, 54, 51, 48, 45, 42,
+        40, 38, 36, 34, 32, 30, 28, 27,
+        25, 24, 22, 21, 20, 19, 18, 17,
+        16, 15, 14, 13, 12, 12, 11, 10,
+        10, 9, 9, 8, 8, 7, 7, 6,
+        6, 6, 5, 5, 5, 4, 4, 4,
+        4, 3, 3, 3, 3, 3, 2, 2,
+        2, 2, 2, 2, 2, 1, 1, 1,
+    ]
+
+    # Instrument ID → (.sfx filename, octave table to switch to or None)
+    INST_CONFIG = {
+        0: ('bass1.sfx', OCTAVE1),
+        1: ('cymbal.sfx', None),
+        2: ('synthsnare.sfx', None),
+        3: ('bassguitar.sfx', OCTAVE2),
+        4: ('HighBass.sfx', None),
+    }
+
+    # Game's sample sizes from sound.c — LoadSample allocates exactly this many
+    # bytes with MEMF_CLEAR, then reads the file (truncating or zero-padding).
+    SAMPLE_SIZES = {
+        0: 2000,   # BASS1SIZE
+        1: 2000,   # CYMBALSIZE
+        2: 2000,   # SYNTHSNARESIZE
+        3: 2400,   # BASSGUITARSIZE
+        4: 2000,   # HIGHBASSSIZE
+    }
+
+    def __init__(self, mixer_rate=11025):
+        self.mixer_rate = mixer_rate
+        self.samples_per_tick = mixer_rate / 50.0
+        self.sound = None
+
+    def load(self, smus_path, sound_dir):
+        """Load an SMUS file and pre-render all tracks to a single pygame Sound."""
+        import struct
+        import numpy as np
+
+        # Load instrument samples as float32 arrays, matching game's sizes
+        raw_samples = {}
+        for inst_id, (filename, _) in self.INST_CONFIG.items():
+            path = sound_dir / filename
+            if path.exists():
+                raw = path.read_bytes()
+                game_size = self.SAMPLE_SIZES.get(inst_id, len(raw))
+                # Match original: AllocMem(Size, MEMF_CLEAR) then fread(buf, 1, Size)
+                if len(raw) >= game_size:
+                    raw = raw[:game_size]        # truncate extra data
+                else:
+                    raw = raw + b'\x00' * (game_size - len(raw))  # zero-pad
+                raw_samples[inst_id] = (
+                    np.frombuffer(raw, dtype=np.int8).astype(np.float32) / 128.0
+                )
+
+        if not raw_samples:
+            return False
+
+        # Parse SMUS chunks
+        data = Path(smus_path).read_bytes()
+        if len(data) < 12 or data[:4] != b'FORM' or data[8:12] != b'SMUS':
+            return False
+
+        pos = 12
+        num_tracks = 3
+        tracks = []
+
+        while pos + 8 <= len(data):
+            cid = data[pos:pos + 4]
+            csz = struct.unpack('>I', data[pos + 4:pos + 8])[0]
+            pos += 8
+
+            if cid == b'SHDR' and csz >= 4:
+                num_tracks = data[pos + 3]
+            elif cid == b'TRAK':
+                tracks.append(data[pos:pos + csz])
+                if len(tracks) >= num_tracks:
+                    pos += csz + (csz % 2)
+                    break
+
+            pos += csz
+            if csz % 2:
+                pos += 1
+
+        if not tracks:
+            return False
+
+        # Per-track initial config (from StartMusic in sound.c)
+        track_cfgs = [
+            {'octave': self.OCTAVE1, 'volume': 50.0 / 64.0},
+            {'octave': self.OCTAVE2, 'volume': 50.0 / 64.0},
+            {'octave': self.OCTAVE2, 'volume': 50.0 / 64.0},
+        ]
+
+        rendered = []
+        for i, tdata in enumerate(tracks[:3]):
+            cfg = track_cfgs[i] if i < len(track_cfgs) else track_cfgs[-1]
+            audio = self._render_track(tdata, raw_samples, cfg, np)
+            rendered.append(audio)
+
+        if not rendered:
+            return False
+
+        # Each track loops independently in the original game (MusicMachine
+        # resets SndPC to 0 when it reaches the end). Tile shorter tracks
+        # so all three align, then take one full cycle of the longest.
+        max_len = max(len(a) for a in rendered)
+        for i in range(len(rendered)):
+            tlen = len(rendered[i])
+            if tlen < max_len:
+                reps = (max_len + tlen - 1) // tlen
+                rendered[i] = np.tile(rendered[i], reps)[:max_len]
+
+        # Mix all tracks together
+        mixed = np.zeros(max_len, dtype=np.float32)
+        for audio in rendered:
+            mixed[:len(audio)] += audio
+
+        # Normalize and convert to signed 16-bit
+        peak = np.max(np.abs(mixed))
+        if peak > 0:
+            mixed = mixed / peak * 0.7
+        out = (mixed * 32767.0).clip(-32768, 32767).astype(np.int16)
+
+        self.sound = pygame.mixer.Sound(buffer=bytes(out))
+        self.sound.set_volume(0.4)
+        return True
+
+    def _render_track(self, track_data, raw_samples, config, np):
+        """Pre-render one SMUS track to a float32 audio buffer."""
+        octave = list(config['octave'])
+        volume = config['volume']
+        cur_sample = raw_samples.get(0, np.zeros(100, dtype=np.float32))
+
+        chunks = []
+        n_events = len(track_data) // 2
+        pc = 0
+
+        while pc < n_events:
+            sid = track_data[pc * 2]
+            dat = track_data[pc * 2 + 1]
+            pc += 1
+
+            # Control events (sID > 128): instrument changes, time sig, etc.
+            if sid > 128:
+                if sid == 0x81:  # SID_Instrument
+                    if dat in raw_samples:
+                        cur_sample = raw_samples[dat]
+                    cfg = self.INST_CONFIG.get(dat)
+                    if cfg and cfg[1] is not None:
+                        octave = cfg[1]
+                continue
+
+            # Note (0-127) or Rest (128)
+            flags = dat
+            division = flags & 0x07
+            ticks = self.NOTE_LENGTHS[division]
+            if flags & 0x08:  # Dotted note = 1.5x
+                ticks = (ticks * 3) // 2
+            duration = max(1, int(ticks * self.samples_per_tick))
+
+            if sid == 0x80:  # Rest
+                chunks.append(np.zeros(duration, dtype=np.float32))
+            elif sid < 128:  # Note
+                tone = sid
+                idx = min(tone, len(octave) - 1)
+                period = max(1, octave[idx])
+                amiga_rate = self.NTSC_CLOCK / period
+                ratio = amiga_rate / self.mixer_rate
+
+                src_len = len(cur_sample)
+                chunk = np.zeros(duration, dtype=np.float32)
+                if duration > 0 and src_len > 1:
+                    # Amiga DMA loops the sample for the note's full duration.
+                    # Use modular wrapping + linear interpolation.
+                    flt = np.arange(duration, dtype=np.float64) * ratio
+                    flt = np.fmod(flt, src_len)
+                    i0 = flt.astype(np.int64) % src_len
+                    i1 = (i0 + 1) % src_len
+                    frac = flt - np.floor(flt)
+                    chunk[:] = (
+                        cur_sample[i0] * (1.0 - frac) +
+                        cur_sample[i1] * frac
+                    ) * volume
+                chunks.append(chunk)
+
+        if chunks:
+            return np.concatenate(chunks)
+        return np.zeros(int(self.samples_per_tick), dtype=np.float32)
+
+    def play(self):
+        if self.sound:
+            self.sound.play(loops=-1)
+
+    def stop(self):
+        if self.sound:
+            self.sound.stop()
+
+    @property
+    def playing(self):
+        if self.sound:
+            import pygame
+            return pygame.mixer.get_busy()
+        return False
+
+
 # ── Main Game ─────────────────────────────────────────────────────
 
 class Game:
     def __init__(self):
+        pygame.mixer.pre_init(frequency=44100, size=-16, channels=1, buffer=1024)
         pygame.init()
-        pygame.mixer.init(frequency=11025, size=8, channels=1, buffer=512)
         self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
         self.internal = pygame.Surface((INTERNAL_W, INTERNAL_H))
         self.clock = pygame.time.Clock()
@@ -933,6 +1185,7 @@ class Game:
         self.state = "title"
         self.current_level = 0
         self.init_game()
+        self.music.play()
 
     # ── Asset Loading ────────────────────────────────────────
 
@@ -982,6 +1235,13 @@ class Game:
         self.snd_laser = load_sound("laser.sfx")
         self.snd_explosion = load_sound("explosion.sfx")
         self.snd_token = load_sound("token.sfx")
+
+        # Music (SMUS)
+        self.music = MusicPlayer(mixer_rate=44100)
+        sound_dir = Path(__file__).parent.parent / 'NTSC' / 'graphics' / 'Sound'
+        smus_path = sound_dir / 'beat.smus'
+        if smus_path.exists():
+            self.music.load(smus_path, sound_dir)
 
     @staticmethod
     def _load_title_ham6():
@@ -1884,6 +2144,7 @@ class Game:
             pygame.display.flip()
             self.clock.tick(FPS)
 
+        self.music.stop()
         pygame.quit()
 
 
