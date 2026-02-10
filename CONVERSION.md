@@ -265,22 +265,51 @@ custom.aud[ChanNo].ac_per = Period;           // Sample rate (clock / period)
 custom.dmacon = 0x8000 + (1 << ChanNo);       // Enable DMA
 ```
 
-Samples are 8-bit signed PCM stored as raw binary (`.sfx` files).
+Samples are 8-bit signed PCM stored as raw binary (`.sfx` files). The Amiga DMA plays `ac_len` words at the rate `NTSC_CLOCK / period` Hz, then loops the sample continuously until DMA is stopped.
 
 ### Conversion: Pygame Mixer
 
-```python
-pygame.mixer.init(frequency=11025, size=8, channels=1, buffer=512)
+**Critical gotcha:** `pygame.init()` initializes the mixer with default settings (44100 Hz, 16-bit, stereo). A subsequent `pygame.mixer.init()` call is **silently ignored** if the mixer is already running. You must use `pygame.mixer.pre_init()` before `pygame.init()`:
 
-def load_sound(name):
-    raw = sfx_path.read_bytes()
-    # Convert signed 8-bit to unsigned 8-bit (Pygame expects unsigned)
-    samples = array.array('b', raw)
-    unsigned = array.array('B', [s + 128 for s in samples])
-    return pygame.mixer.Sound(buffer=bytes(unsigned))
+```python
+pygame.mixer.pre_init(frequency=44100, size=-16, channels=1, buffer=1024)
+pygame.init()
 ```
 
-The original samples are 8-bit signed; Pygame expects unsigned 8-bit, so each sample value is offset by +128. The mixer is initialized at 11025 Hz to approximately match the original playback rate.
+The mixer runs at **44100 Hz, signed 16-bit, mono**. This is essential because the Amiga plays instrument samples at 14–28 kHz. An 11025 Hz mixer would downsample without anti-aliasing, destroying the waveforms and making nothing sound like an instrument.
+
+### Sound Effects
+
+```python
+def load_sound(name):
+    raw = np.frombuffer(sfx_path.read_bytes(), dtype=np.int8).astype(np.int16)
+    raw = np.repeat(raw, 4) * 256   # upsample 4x to 44100 Hz, scale to 16-bit
+    return pygame.mixer.Sound(buffer=raw.tobytes())
+```
+
+The original `.sfx` files are raw signed 8-bit PCM at approximately 8,949–11,046 Hz (depending on the playback period). For the 44100 Hz mixer, each sample is repeated 4× using zero-order hold (matching the Amiga DAC's behavior) and scaled from 8-bit to 16-bit.
+
+### Music (SMUS Playback)
+
+The `MusicPlayer` class parses the SMUS file and **pre-renders** all 3 tracks to a single looping buffer:
+
+1. **Load instrument samples** — Read `.sfx` files, truncating or zero-padding to match the game's original `LoadSample()` sizes (e.g., `BASS1SIZE=2000`, `BASSGUITARSIZE=2400`)
+2. **Parse SMUS events** — Walk each track's event stream, processing instrument changes (sID=0x81) and rendering notes/rests
+3. **Resample notes** — For each note, compute `amiga_rate = 3,579,545 / period`, then resample the instrument sample from `amiga_rate` to 44100 Hz using **linear interpolation** with **modular wrapping** (simulating Amiga DMA's sample looping)
+4. **Per-track looping** — Each track loops independently in the original. Shorter tracks are tiled (`np.tile`) to match the longest track's duration
+5. **Mix and normalize** — Sum all tracks, normalize to 70% headroom, convert to signed 16-bit
+
+The tick rate is set to **50 Hz** (PAL VBI rate), matching the original game's tempo:
+
+```python
+self.samples_per_tick = mixer_rate / 50.0  # PAL timing
+```
+
+Key implementation details:
+- Octave tables (128-entry period lookup) are transcribed exactly from `sound.c`
+- Instrument changes set both the sample data and optionally the octave table (instruments 0 and 3 switch octaves; 1, 2, 4 leave it unchanged)
+- Control events other than SID_Instrument (TimeSig, KeySig, Dynamic) are consumed but **ignored**, matching the original game's behavior
+- The SHDR tempo field (16047) is also ignored — timing is purely VBI tick-driven
 
 ---
 
@@ -443,7 +472,7 @@ Some Amiga-specific systems have no direct equivalent and were simplified or omi
 | Display list (z-ordered Bob rendering) | Explicit draw order in `draw_gameplay()` |
 | Custom memory allocator | Python garbage collection |
 | Interrupt-driven keyboard handler | `pygame.event` / `pygame.key.get_pressed()` |
-| SMUS music format playback | Not yet implemented |
+| SMUS music format playback | `MusicPlayer` class — pre-renders 3 tracks to a looping buffer |
 | Demo mode (attract sequence) | Not yet implemented |
 | High score persistence | Not yet implemented |
 
@@ -464,7 +493,7 @@ PhantomFighter/
   PAL/                           # PAL version (50Hz) source + assets
   modern-bitmaps/                # Converted PNG assets (generated)
   python/
-    phantom_fighter.py           # Complete game (~1890 lines)
+    phantom_fighter.py           # Complete game (~2150 lines)
     convert_graphics.py          # Asset converter (~570 lines)
     requirements.txt             # pygame, Pillow, numpy
     .venv/                       # Python virtual environment
@@ -488,4 +517,4 @@ python convert_graphics.py
 python phantom_fighter.py
 ```
 
-The graphics converter reads from `NTSC/graphics/` and writes PNGs to `modern-bitmaps/`. The game reads from `modern-bitmaps/` for sprites and backgrounds, and directly from `NTSC/graphics/` for the title screen (HAM6 rendered at runtime) and sound effects (raw PCM).
+The graphics converter reads from `NTSC/graphics/` and writes PNGs to `modern-bitmaps/`. The game reads from `modern-bitmaps/` for sprites and backgrounds, and directly from `NTSC/graphics/` for the title screen (HAM6 rendered at runtime), sound effects (raw PCM `.sfx` files), and music (`beat.smus` + instrument samples).

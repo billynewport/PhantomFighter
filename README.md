@@ -9,7 +9,7 @@ There are several youtube videos of the game in action. Here is one of them: htt
 
 ## Whats missing
 
-I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing header files and libraries and the sound.
+I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing some header files and libraries. The NTSC graphics and sound files were later recovered.
 
 The code is organized around an event scheduler which executes every frame. The scheduler is a linked list of events which are executed in order of their time. The scheduler is updated every frame and events are added and removed from the scheduler as needed. The scheduler is the main loop of the game. I will try to comment the code and improve explaining how it works
 over time. Meanwhile, I guess it's an interesting piece of history for those interested in the Amiga and game development in the late 80s.
@@ -22,13 +22,13 @@ Initially, we obtained what I think were some of the first Amiga 1000 computers 
 
 ## Graphics inspiration
 
-Paul was responsible for the graphics. He was intriguted with the Alien movies and wanted an organic feel.
+Paul was responsible for the graphics. He was intrigued with the Alien movies and wanted an organic feel.
 
 ## Game Hardware overview
 
 The game was designed around the dual playfield graphics mode on the Amiga. This provided 2 independent 320x256 8 color view fields, one on top of the other. Each can be scrolled independently. I used hardware sprites for player bullets and ships were rendered on the screen using the blitter. The blitter was used in a clever way. Normally, each bitplane for each playfield (there are 3 per playfield, hence 8 colors) is allocated in memory and then the hardware is setup to point at the 3 bitplanes memory for each playfield. We rendered the ships and graphics on the top playfield. Usually, this means we would need a blitter operation per bitplane to render a software sprite.
 
-The game used the Copper chip to interact with the video hardware registers. This included setting up the dual playfield as described above, the hardware sprites and switching the video mode towards the bottom of the screen allowing a score board to be displayed. The dual playfield was only at the top portion of the screen, the playable area. The score board showed how many lifes were left, the score and so on. This was a straight 16 color playfield.
+The game used the Copper chip to interact with the video hardware registers. This included setting up the dual playfield as described above, the hardware sprites and switching the video mode towards the bottom of the screen allowing a score board to be displayed. The dual playfield was only at the top portion of the screen, the playable area. The score board showed how many lives were left, the score and so on. This was a straight 16 color playfield.
 
 ## Generating the Copper programs for the various screen modes.
 

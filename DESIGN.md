@@ -524,19 +524,106 @@ Maximum lives: 9. Starting lives: 5.
 
 ## Sound System
 
-Audio uses the Amiga's 4 hardware DMA channels with round-robin allocation:
+Audio uses the Amiga's **Paula** chip — 4 hardware DMA channels with round-robin allocation.
 
-| Sample | Size | Usage |
-|--------|------|-------|
-| `laser.sfx` | 7,635 bytes | Player firing |
-| `explosion.sfx` | 7,126 bytes | Alien/player death |
-| `token.sfx` | 5,259 bytes | Token pickup |
-| `HighBass.sfx` | 2,000 bytes | Music beat |
-| `synthsnare.sfx` | 2,000 bytes | Music percussion |
-| `bass1.sfx` | 2,000 bytes | Music bass |
-| `cymbal.sfx` | 2,000 bytes | Music cymbal |
+### Sound Effects
 
-Sound effects are 8-bit signed PCM samples played at a configured period (sample rate). The game uses a simple channel allocator that round-robins through available channels.
+| Sample | File Size | Game Size | Period | Rate | Usage |
+|--------|-----------|-----------|--------|------|-------|
+| `laser.sfx` | 7,635 | 7,635 | 400 | 8,949 Hz | Player firing |
+| `explosion.sfx` | 7,126 | 7,126 | 400 | 8,949 Hz | Alien/player death |
+| `token.sfx` | 5,259 | 5,259 | 324 | 11,046 Hz | Token pickup |
+
+Samples are raw 8-bit signed PCM. The game allocates fixed-size buffers with `AllocMem(Size, MEMF_CHIP|MEMF_CLEAR)` and reads up to `Size` bytes — files shorter than the buffer are zero-padded, files longer are truncated.
+
+### Music System (SMUS)
+
+The background music is stored as an IFF **SMUS** (Simple Musical Score) file (`beat.smus`) — a tracker-style format from the Amiga music editor **Sonix**.
+
+#### SMUS File Structure
+
+```
+FORM SMUS {
+    SHDR (4 bytes) — tempo=16047, volume=127, tracks=3
+    NAME           — song title
+    SNX1           — Sonix extension data (ignored by game)
+    INS1 × 5       — instrument references (names only, game ignores)
+    TRAK × 3       — track event data
+}
+```
+
+#### Instruments
+
+The game hard-codes 5 instruments mapped to `.sfx` sample files:
+
+| ID | Name | Sample | Game Size | Octave Table |
+|----|------|--------|-----------|-------------|
+| 0 | BassDrum | `bass1.sfx` | 2,000 bytes | Octave1 |
+| 1 | HighHat | `cymbal.sfx` | 2,000 bytes | (unchanged) |
+| 2 | SnareDrum | `synthsnare.sfx` | 2,000 bytes | (unchanged) |
+| 3 | LowBass | `bassguitar.sfx` | 2,400 bytes | Octave2 |
+| 4 | Dave2 | `HighBass.sfx` | 2,000 bytes | (unchanged) |
+
+Note: Some `.sfx` files on disk are larger than the game's buffer size (e.g., `HighBass.sfx` is 2,997 bytes but the game only reads 2,000). The game's `LoadSample()` uses `fread(buf, 1, Size, fp)` which truncates at `Size`.
+
+#### Track Configuration (from `StartMusic()`)
+
+| Track | Channel | Octave Table | Volume |
+|-------|---------|-------------|--------|
+| 0 | 1 | Octave1 | 50/64 |
+| 1 | 2 | Octave2 | 50/64 |
+| 2 | 3 | Octave2 | 50/64 |
+
+Track 0 is the drum track (bass drum, hi-hat, snare). Tracks 1 and 2 are bass guitar patterns.
+
+#### Event Format
+
+Each track is a sequence of 2-byte events (`SEvent`):
+
+```c
+typedef struct { UBYTE sID; UBYTE data; } SEvent;
+```
+
+- `sID > 128`: Control event (instrument change, time signature, etc.)
+  - `0x81` (SID_Instrument): `data` = instrument ID (0-4). Sets sample pointer, sample length, and optionally switches the octave table.
+  - `0x82-0x84` (TimeSig, KeySig, Dynamic): Consumed but **ignored** by the game.
+- `sID == 128` (SID_Rest): Silence for the note's duration. DMA is stopped.
+- `sID < 128`: Note. `sID` = tone index (0-127), looked up in the track's current octave table to get an Amiga period value.
+
+The `data` byte for notes/rests encodes duration flags:
+
+```c
+#define NOT_division 0x07   // bits 0-2: duration index
+#define NOT_dot      0x08   // bit 3: dotted note (1.5x duration)
+```
+
+Duration in VBI ticks: `NoteLength[flags & 7]`, where `NoteLength = [96, 48, 24, 12, 6, 3, 1, 0]`. If dotted, multiply by 1.5.
+
+#### Octave Tables
+
+Two 128-entry lookup tables convert tone indices to Amiga period values:
+
+- **Octave1**: Periods 7550 (tone 0, ~474 Hz) down to 5 (tone 127). Used by bass drum.
+- **Octave2**: Periods 2595 (tone 0, ~1,379 Hz) down to 1 (tone 127). Used by bass guitar.
+
+Playback rate = `NTSC_CLOCK (3,579,545) / period` Hz.
+
+#### MusicMachine (Event-Driven Playback)
+
+`MusicMachine()` is the music engine, called via the scheduler. For each invocation:
+
+1. Stop DMA on the track's channel (brief silence between notes)
+2. Loop through control events (`sID > 128`), processing instrument changes
+3. When a note or rest is reached:
+   - **Rest**: Keep DMA stopped, schedule next call after rest duration
+   - **Note**: Set `ac_ptr` (sample), `ac_len` (length in words), `ac_vol` (volume), `ac_per` (period from octave table), enable DMA. Schedule next call after note duration.
+4. The Amiga DMA **loops the sample** continuously until stopped at the next note.
+
+Each track loops independently — when `SndPC` reaches the track length, it resets to 0.
+
+#### Timing
+
+The music runs at the VBI rate. With a PAL Amiga (50 Hz), a sixteenth note (6 ticks) = 0.12 seconds. The tempo field in the SHDR chunk (16047) is **ignored** by the game — all timing is purely VBI-driven.
 
 ---
 
