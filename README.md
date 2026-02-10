@@ -9,7 +9,7 @@ There are several youtube videos of the game in action. Here is one of them: htt
 
 ## Whats missing
 
-I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing header files and libraries and the graphics. The graphics could possibly be recovered from a game disk which I also have but haven't done yet. I will try to recover the graphics and add them to this repository.
+I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing header files and libraries and the sound.
 
 The code is organized around an event scheduler which executes every frame. The scheduler is a linked list of events which are executed in order of their time. The scheduler is updated every frame and events are added and removed from the scheduler as needed. The scheduler is the main loop of the game. I will try to comment the code and improve explaining how it works
 over time. Meanwhile, I guess it's an interesting piece of history for those interested in the Amiga and game development in the late 80s.
@@ -77,3 +77,7 @@ Lattice had some advantages. The compiler was a 2 pass compiler. The first pass 
 ## 68010 issues
 
 The game was developed on a 68000 Amiga. The 68010 Amigas came later and introduced compatibility problems due to their instruction prefetch. The 68010 would prefetch 3 16 bit words ahead. This caused problems with self modifying code which updated a following instruction. The code would execute incorrectly because the unmodified instruction was fetched during the modification instruction being executed thus the modification was lost.
+
+## Modern python version of the game
+
+There is a modern claude generated version of the game in python.
