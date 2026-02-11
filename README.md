@@ -9,7 +9,7 @@ There are several youtube videos of the game in action. Here is one of them: htt
 
 ## Whats missing
 
-I found a floppy containing this code when rummaging through stuff at my parents house. The game is not complete. It's missing some header files and libraries. The NTSC graphics and sound files were later recovered.
+I found a floppy containing this code when rummaging through stuff at my parents house. The game source, images, and music were actually complete. All essential files, including NTSC graphics and sound files, were recovered.
 
 The code is organized around an event scheduler which executes every frame. The scheduler is a linked list of events which are executed in order of their time. The scheduler is updated every frame and events are added and removed from the scheduler as needed. The scheduler is the main loop of the game. I will try to comment the code and improve explaining how it works
 over time. Meanwhile, I guess it's an interesting piece of history for those interested in the Amiga and game development in the late 80s.
@@ -52,7 +52,7 @@ Mike Murphy had created his own Sprite/Bitmap editor for the Amiga. This was an 
 
 Hindsight is always 20/20. The game was unusual for the time. Most games were Atari ST ports. Other similar games used a cell based background with the software sprites layered on top. The Atari ST had no hardware support for Sprites or hardware scrolling. They were like a 16 bit ZX Spectrum in this regard. I wanted to use the hardware features of the Amiga, hence, split screen with dual playfields for the game and a status screen at the bottom. The game background screens during play were 4 screens wide and drawn as a single bitmap by Paul. We loaded the huge bitmap in to memory and then scrolled through it either vertically or horizontally during the game by changing the playfield base addresses and hardware scroll registers. We could have done this using cells instead. Paul would have made a palette of X 8x8 or 16x16 character cells and then used those to construct the backgrounds from those cells. This would have saved a lot of memory and would still have been easy to implement hardware wise. But, it was my first game and we didn't know any better. The game would have been easier to port to other platforms if we had used cells. The game was never ported to the Atari ST but Bobby Healy did a PC version which had to use different graphics due to the different capabilities. He had to support CGA/EGA/Tandy and VGA versions of the game.
 
-A big mistake I made was using random patterns of alien waves. I should have used a fixed pattern of waves per level so people could learn the game and progress easier. It was too hard to play as a result I think. Defender inspired this as its aliens were random. But, regardless, should have used fixed wave patterns.
+A big mistake I made was using random patterns of alien waves. I should have used a fixed pattern of waves per level so people could learn the game and progress easier. It was too hard to play as a result I think. Defender inspired this as its aliens were random. But, regardless, should have used fixed wave patterns. The python version corrects this and only allows attacks from the front of the player ship.
 
 ## Best way to explore source code
 
@@ -101,3 +101,7 @@ address it promptly.
 ## Modern python version of the game
 
 There is a modern claude generated version of the game in python.
+
+## Javascript version of the game
+
+This is a version which can be played from a browser. Based on the python version.
