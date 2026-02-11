@@ -370,6 +370,87 @@ def load_screen(subdir, name):
     return None
 
 
+def decode_hw_sprite(words, palette):
+    """Decode an Amiga hardware sprite (16px wide) into a pygame Surface.
+
+    words: list of UWORD values — [pos_ctl, pos_ctl, row0_p0, row0_p1, ..., end, end]
+           36 words = 18 rows: 1 control + 16 image + 1 end marker.
+    palette: 3-entry list of (R,G,B) tuples for color indices 1-3 (0=transparent).
+    """
+    surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+    for row in range(16):
+        p0 = words[2 + row * 2]
+        p1 = words[2 + row * 2 + 1]
+        for x in range(16):
+            bit = 15 - x
+            c = ((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1)
+            if c:
+                surf.set_at((x, row), palette[c - 1])
+    return surf
+
+
+def make_bullet_sprites():
+    """Decode player bullet sprites from original bulldata.c data."""
+    # Amiga 12-bit color: 0x0RGB, expand 4-bit → 8-bit via *17
+    # Pow0_Colors = {0x0F00, 0x0FC0, 0x0FFF} → Red, Yellow-Orange, White
+    pal = [(255, 0, 0), (255, 204, 0), (255, 255, 255)]
+
+    # Sprite_UpBullet[36] from bulldata.c — power 0 up-facing bullet
+    up0 = [
+        0x0000, 0x0000,
+        0xe000, 0x0000, 0x1000, 0xe000, 0xf000, 0xe000,
+        0x5000, 0xe000, 0xa000, 0x4000, 0xa000, 0x4000,
+        0xa000, 0x4000, 0x4000, 0x0000, 0x0000, 0x4000,
+        0x4000, 0x0000, 0x4000, 0x0000, 0x0000, 0x0000,
+        0x4000, 0x0000, 0x0000, 0x0000, 0x4000, 0x0000,
+        0x0000, 0x0000,
+        0x0000, 0x0000,
+    ]
+
+    # Sprite_BUpBullet[36] from bulldata.c — power 1 up-facing bullet
+    up1 = [
+        0x0000, 0x0000,
+        0x4000, 0x0000, 0xa000, 0x4000, 0x5000, 0xe000,
+        0xf000, 0xe000, 0x5000, 0xe000, 0x5000, 0xe000,
+        0x1000, 0xe000, 0x5000, 0xe000, 0x1000, 0xe000,
+        0xe000, 0x4000, 0xa000, 0x4000, 0x0000, 0x4000,
+        0x4000, 0x0000, 0x0000, 0x4000, 0x4000, 0x0000,
+        0x0000, 0x0000,
+        0x0000, 0x0000,
+    ]
+
+    # Sprite_RoundBullet[16] — homing missile (8 rows including control)
+    round_data = [
+        0x0000, 0x0000,
+        0x7800, 0x0000, 0xfc00, 0x7800, 0xcc00, 0x7800,
+        0xcc00, 0x7800, 0xfc00, 0x7800, 0x7800, 0x0000,
+        0x0000, 0x0000,
+    ]
+
+    def crop_to_opaque(surf):
+        """Crop surface to its opaque bounding box."""
+        rect = surf.get_bounding_rect()
+        if rect.width == 0 or rect.height == 0:
+            return surf
+        cropped = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        cropped.blit(surf, (0, 0), rect)
+        return cropped
+
+    sprites = {}
+    for power, data in enumerate([up0, up1]):
+        up_surf = crop_to_opaque(decode_hw_sprite(data, pal))
+        sprites[(power, 'up')] = up_surf
+        sprites[(power, 'right')] = crop_to_opaque(pygame.transform.rotate(up_surf, -90))
+        sprites[(power, 'down')] = crop_to_opaque(pygame.transform.rotate(up_surf, 180))
+        sprites[(power, 'left')] = crop_to_opaque(pygame.transform.rotate(up_surf, 90))
+
+    # Round bullet (pad to 16 rows for decode_hw_sprite)
+    padded = round_data + [0x0000, 0x0000] * 10  # pad to 36 words
+    sprites['round'] = crop_to_opaque(decode_hw_sprite(padded, pal))
+
+    return sprites
+
+
 def load_sound(name):
     sfx_path = Path(__file__).parent.parent / 'NTSC' / 'graphics' / 'Sound' / name
     if not sfx_path.exists():
@@ -517,6 +598,8 @@ class Player:
 
 
 class Bullet:
+    sprites = None  # class-level, loaded once via make_bullet_sprites()
+
     def __init__(self, x, y, dx, dy):
         self.x, self.y = float(x), float(y)
         self.dx, self.dy = dx, dy
@@ -529,12 +612,30 @@ class Bullet:
         if self.x < -10 or self.x > INTERNAL_W + 10 or self.y < -10 or self.y > VIEW_H + 10:
             self.alive = False
 
+    def _direction(self):
+        if abs(self.dx) > abs(self.dy):
+            return 'right' if self.dx > 0 else 'left'
+        return 'down' if self.dy > 0 else 'up'
+
     def get_rect(self):
+        if self.sprites:
+            img = self.sprites.get((0, self._direction()))
+            if img:
+                return pygame.Rect(int(self.x) - img.get_width() // 2,
+                                   int(self.y) - img.get_height() // 2,
+                                   img.get_width(), img.get_height())
         if abs(self.dx) > abs(self.dy):
             return pygame.Rect(int(self.x), int(self.y), 16, 4)
         return pygame.Rect(int(self.x), int(self.y), 4, 16)
 
     def draw(self, surface):
+        if self.sprites:
+            power = min(self.power - 1, 1)
+            img = self.sprites.get((power, self._direction()))
+            if img:
+                surface.blit(img, (int(self.x) - img.get_width() // 2,
+                                   int(self.y) - img.get_height() // 2))
+                return
         r = self.get_rect()
         pygame.draw.rect(surface, YELLOW, r)
 
@@ -700,7 +801,7 @@ class Boss:
         img = self.frames[self.anim_frame % len(self.frames)]
         if self.flash_timer > 0 and (self.flash_timer // 2) % 2:
             flash = img.copy()
-            flash.fill((255, 255, 255, 100), special_flags=pygame.BLEND_RGBA_ADD)
+            flash.fill((255, 255, 255), special_flags=pygame.BLEND_RGB_ADD)
             surface.blit(flash, (dx, dy))
         else:
             surface.blit(img, (dx, dy))
@@ -859,7 +960,7 @@ class BackgroundEnemy:
         img = self.frames[self.anim_frame % len(self.frames)]
         if self.flash_timer > 0 and (self.flash_timer // 2) % 2:
             flash = img.copy()
-            flash.fill((255, 255, 255, 100), special_flags=pygame.BLEND_RGBA_ADD)
+            flash.fill((255, 255, 255), special_flags=pygame.BLEND_RGB_ADD)
             surface.blit(flash, (int(sx), int(sy)))
         else:
             surface.blit(img, (int(sx), int(sy)))
@@ -1207,6 +1308,7 @@ class Game:
         self.explosion_frames = load_frames("Level-All", "bang", 8)
         self.token_frames = load_frames("Level-All", "token", 6)
         self.alien_bullet_frames = load_frames("Level-All", "AlienBullet", 3)
+        Bullet.sprites = make_bullet_sprites()
 
         # Backgrounds for all levels
         # Cycling levels get rebuilt as 8-bit palette surfaces from original data
