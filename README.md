@@ -78,6 +78,26 @@ Lattice had some advantages. The compiler was a 2 pass compiler. The first pass 
 
 The game was developed on a 68000 Amiga. The 68010 Amigas came later and introduced compatibility problems due to their instruction prefetch. The 68010 would prefetch 3 16 bit words ahead. This caused problems with self modifying code which updated a following instruction. The code would execute incorrectly because the unmodified instruction was fetched during the modification instruction being executed thus the modification was lost.
 
+## Legal Status and Licensing
+
+I wrote Phantom Fighter in 1988 while employed by Emerald Software in Ireland.
+As an employee, copyright in the original source code and assets was held by
+Emerald Software. The game was published by Martech Software (UK) and
+Broderbund Software (USA).
+
+Emerald Software and Martech Software ceased operations long ago. Broderbund
+was acquired through a series of corporate transactions. To the best of my
+knowledge, no entity has commercially exploited or asserted rights over
+Phantom Fighter in decades, and no active rightsholder can be identified.
+
+I am sharing this repository in good faith as the original author, for
+historical, educational, and preservation purposes. If any party holds a
+legitimate claim to rights in this work, please open an issue and I will
+address it promptly.
+
+- **Python recreation** (`python/` directory): Licensed under the MIT License. See [LICENSE](LICENSE).
+- **Original source code and assets**: Shared under the notice in [LICENSE](LICENSE). See above for background.
+
 ## Modern python version of the game
 
 There is a modern claude generated version of the game in python.
